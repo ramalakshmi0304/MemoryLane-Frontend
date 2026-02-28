@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import API from "../api/axios";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ImageIcon, Plus, Loader2, Download, Trash2, FolderPlus, X, ChevronRight, Layers, Share2, Sparkles
+  ImageIcon, Loader2, Download, Trash2, FolderPlus, X, ChevronRight, Layers, Share2, Sparkles
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import Layout from "../components/Layout";
