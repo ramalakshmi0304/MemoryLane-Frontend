@@ -16,6 +16,7 @@ export default function Albums() {
   const [loading, setLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [newAlbum, setNewAlbum] = useState({ name: "", description: "" });
+  
 
   const fetchAlbums = useCallback(async () => {
     try {
@@ -60,21 +61,55 @@ export default function Albums() {
   };
 
   const handleDownloadAlbum = async (e, album) => {
-    e.preventDefault(); e.stopPropagation();
+    e.preventDefault(); 
+    e.stopPropagation();
+
+    // 1. Validation: Prevent zipping empty albums if total_memories is 0
+    if (album.total_memories === 0) {
+      return toast.error("This collection is empty. Add memories first!");
+    }
+
     const toastId = toast.loading(`Preparing archive for "${album.name}"...`);
+
     try {
-      const res = await API.get(`/albums/${album.id}/download`, { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
+      // 2. Request with responseType 'blob' is correct, but we wrap it carefully
+      const res = await API.get(`/albums/${album.id}/download`, { 
+        responseType: 'blob',
+        // Optional: timeout for large zip files
+        timeout: 30000 
+      });
+
+      // 3. Create the Blob and Object URL
+      const blob = new Blob([res.data], { type: 'application/zip' });
+      const url = window.URL.createObjectURL(blob);
+      
+      // 4. Create hidden link and trigger download
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${album.name.replace(/\s+/g, '_')}_Archive.zip`;
+      link.setAttribute("download", `${album.name.replace(/\s+/g, '_')}_Archive.zip`);
+      
+      document.body.appendChild(link);
       link.click();
+      
+      // 5. Cleanup: Remove link and revoke URL to save memory
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
       toast.success("Download started!", { id: toastId });
     } catch (err) { 
-      toast.error("Failed to generate archive.", { id: toastId }); 
+      console.error("ZIP Error:", err);
+      // Handle cases where the backend sends a JSON error even though we expected a Blob
+      if (err.response?.data instanceof Blob) {
+        const text = await err.response.data.text();
+        const errorData = JSON.parse(text);
+        toast.error(errorData.message || "Archive generation failed.", { id: toastId });
+      } else {
+        toast.error("Failed to generate archive. Check server logs.", { id: toastId }); 
+      }
     }
   };
 
+  
   const handleCreateAlbum = async (e) => {
     e.preventDefault();
     if (!newAlbum.name.trim()) return toast.error("Please enter an album name");

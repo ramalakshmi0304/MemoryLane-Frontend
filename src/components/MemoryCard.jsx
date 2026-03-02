@@ -1,19 +1,20 @@
 import React, { useState } from "react";
-import { Trash2, Trophy, MapPin, PlayCircle, Sparkles, Mic, Share2, AlertTriangle, Edit3, Download, Calendar } from "lucide-react";
+// ADDED: CheckCircle2 for the selection badge
+import { Trash2, Trophy, MapPin, PlayCircle, Sparkles, Mic, Share2, AlertTriangle, Edit3, Download, Calendar, CheckCircle2 } from "lucide-react";
 import { format, isValid } from "date-fns";
 import API from "../api/axios";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import EditMemoryModal from "./EditMemoryModal"; 
 
-const MemoryCard = ({ memory, onRefresh }) => {
+const MemoryCard = ({ memory, onRefresh, isSelectionMode, isSelected, onSelect }) => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [isEnlarged, setIsEnlarged] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Logic Preserved
+  // Logic
   const displayUrl = memory.display_url || memory.media_url || memory.image_path || (memory.media && memory.media[0]?.file_url);
   const voiceUrl = memory.voice_url; 
   const mediaType = memory.media_type || "image";
@@ -57,11 +58,12 @@ const MemoryCard = ({ memory, onRefresh }) => {
   const confirmDelete = async () => {
     try {
       setIsDeleting(true);
-      await API.delete(`/memories/${memory.id}`);
-      toast.success("Memory removed");
-      onRefresh();
+      await API.delete(`/memories/${memory.id}`); 
+      toast.success("Memory permanently erased");
+      if (onRefresh) onRefresh(); 
     } catch (err) {
-      toast.error("Error deleting memory");
+      console.error("Delete Error:", err);
+      toast.error(err.response?.data?.message || "Error deleting memory");
     } finally {
       setIsDeleting(false);
       setShowDeleteModal(false);
@@ -103,10 +105,29 @@ const MemoryCard = ({ memory, onRefresh }) => {
     <>
       <motion.div
         layout
-        className={`group relative flex flex-col w-full bg-white dark:bg-slate-900 rounded-[2.5rem] p-4 shadow-xl shadow-slate-200/50 dark:shadow-none border transition-all duration-500 hover:shadow-2xl hover:-translate-y-3 ${
-          memory.is_milestone ? "border-amber-200 ring-[12px] ring-amber-50/50 dark:ring-amber-900/5" : "border-slate-50 dark:border-slate-800"
+        onClick={() => isSelectionMode ? onSelect() : null}
+        className={`group relative flex flex-col w-full bg-white dark:bg-slate-900 rounded-[2.5rem] p-4 shadow-xl transition-all duration-500 cursor-pointer ${
+          isSelected 
+            ? "ring-[4px] ring-indigo-600 shadow-indigo-200 dark:shadow-none translate-y-[-8px]" 
+            : "hover:-translate-y-3 shadow-slate-200/50 dark:shadow-none"
+        } ${
+          memory.is_milestone && !isSelected ? "border-amber-200 ring-[12px] ring-amber-50/50" : "border-slate-50 dark:border-slate-800"
         }`}
       >
+        {/* SELECTION BADGE */}
+        <AnimatePresence>
+          {isSelected && (
+            <motion.div 
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0, opacity: 0 }}
+              className="absolute -top-3 -right-3 z-[50] bg-indigo-600 text-white p-2 rounded-full shadow-xl border-4 border-white dark:border-slate-900"
+            >
+              <CheckCircle2 size={24} strokeWidth={3} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* MILESTONE BADGE */}
         {memory.is_milestone && (
           <div className="absolute top-6 left-6 z-40 bg-amber-500 text-white px-5 py-2 rounded-2xl shadow-xl flex items-center gap-2 border-2 border-white dark:border-slate-900">
@@ -116,34 +137,40 @@ const MemoryCard = ({ memory, onRefresh }) => {
         )}
 
         {/* FLOATING ACTIONS */}
-        <div className="absolute top-6 right-6 z-40 flex flex-col gap-3 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-4 group-hover:translate-x-0">
-          {[
-            { icon: Share2, color: "text-indigo-600", onClick: handleShare },
-            { icon: Edit3, color: "text-slate-600", onClick: (e) => { e.stopPropagation(); setShowEditModal(true); } },
-            { icon: Trash2, color: "text-rose-600", onClick: (e) => { e.stopPropagation(); setShowDeleteModal(true); } }
-          ].map((btn, idx) => (
-            <button 
-              key={idx}
-              onClick={btn.onClick}
-              className={`h-12 w-12 flex items-center justify-center bg-white/95 dark:bg-slate-800/95 ${btn.color} hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black rounded-2xl shadow-2xl backdrop-blur-md transition-all active:scale-90 border border-slate-100 dark:border-slate-700`}
-            >
-              <btn.icon size={20} strokeWidth={2.5} />
-            </button>
-          ))}
-        </div>
+        {!isSelectionMode && (
+          <div className="absolute top-6 right-6 z-40 flex flex-col gap-3 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-4 group-hover:translate-x-0">
+            {[
+              { icon: Share2, color: "text-indigo-600", onClick: handleShare },
+              { icon: Edit3, color: "text-slate-600", onClick: (e) => { e.stopPropagation(); setShowEditModal(true); } },
+              { icon: Trash2, color: "text-rose-600", onClick: (e) => { e.stopPropagation(); setShowDeleteModal(true); } }
+            ].map((btn, idx) => (
+              <button 
+                key={idx}
+                onClick={btn.onClick}
+                className={`h-12 w-12 flex items-center justify-center bg-white/95 dark:bg-slate-800/95 ${btn.color} hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black rounded-2xl shadow-2xl backdrop-blur-md transition-all active:scale-90 border border-slate-100 dark:border-slate-700`}
+              >
+                <btn.icon size={20} strokeWidth={2.5} />
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* MEDIA BOX */}
         <div
-          onClick={() => displayUrl && !imageError && setIsEnlarged(true)}
+          onClick={(e) => {
+            if (isSelectionMode) return; 
+            e.stopPropagation();
+            displayUrl && !imageError && setIsEnlarged(true);
+          }}
           className={`relative aspect-[4/5] overflow-hidden rounded-[2rem] bg-slate-100 dark:bg-slate-800 ${displayUrl ? 'cursor-zoom-in' : 'cursor-default'}`}
         >
           {renderPrimaryMedia()}
+          {isSelected && <div className="absolute inset-0 bg-indigo-600/20 backdrop-blur-[2px]" />}
           <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
         </div>
 
-        {/* CONTENT SECTION */}
+        {/* CONTENT SECTION (Only One Copy Now!) */}
         <div className="mt-8 px-4 pb-4 space-y-6">
-          {/* Tags */}
           <div className="flex flex-wrap gap-2">
             {memory.tags?.map((tag, i) => {
               const tagName = typeof tag === "object" && tag !== null ? tag.name : tag;
@@ -167,7 +194,6 @@ const MemoryCard = ({ memory, onRefresh }) => {
             )}
           </div>
 
-          {/* VOICE SECTION */}
           {voiceUrl && (
             <div className="p-4 bg-slate-50 dark:bg-slate-950/50 rounded-[1.5rem] border border-slate-100 dark:border-slate-800/50">
               <div className="flex items-center gap-2 mb-3">
@@ -193,7 +219,7 @@ const MemoryCard = ({ memory, onRefresh }) => {
         </div>
       </motion.div>
 
-      {/* FULLSCREEN IMAGE OVERLAY */}
+      {/* FULLSCREEN OVERLAY */}
       <AnimatePresence>
         {isEnlarged && (
           <motion.div
@@ -203,28 +229,18 @@ const MemoryCard = ({ memory, onRefresh }) => {
           >
             <motion.img
               initial={{ scale: 0.8, y: 20 }} animate={{ scale: 1, y: 0 }}
-              src={displayUrl} className="max-w-full max-h-[80vh] rounded-[2.5rem] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.5)] border border-white/10 object-contain"
+              src={displayUrl} className="max-w-full max-h-[80vh] rounded-[2.5rem] shadow-2xl border border-white/10 object-contain"
             />
-            <div className="mt-12 text-center space-y-4">
-               <h2 className="text-5xl font-black text-white tracking-tighter leading-none">{memory.title}</h2>
-               <div className="flex items-center justify-center gap-6 text-white/50 text-xs font-black uppercase tracking-[0.3em]">
-                 <span>{formattedDate()}</span>
-                 {memory.location && <span className="h-1 w-1 bg-white/20 rounded-full" />}
-                 <span>{memory.location}</span>
-               </div>
-            </div>
           </motion.div>
         )}
       </AnimatePresence>
 
       <EditMemoryModal 
-        memory={memory} 
-        isOpen={showEditModal} 
-        onClose={() => setShowEditModal(false)} 
-        onRefresh={onRefresh} 
+        memory={memory} isOpen={showEditModal} 
+        onClose={() => setShowEditModal(false)} onRefresh={onRefresh} 
       />
 
-      {/* DELETE MODAL */}
+      {/* DELETE MODAL (Ensured Buttons are Active) */}
       <AnimatePresence>
         {showDeleteModal && (
           <motion.div 
@@ -233,26 +249,24 @@ const MemoryCard = ({ memory, onRefresh }) => {
           >
             <motion.div 
               initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
-              className="bg-white dark:bg-slate-900 rounded-[3rem] p-12 max-w-md w-full border border-slate-100 dark:border-slate-800 text-center shadow-2xl"
+              className="bg-white dark:bg-slate-900 rounded-[3rem] p-12 max-w-md w-full border border-slate-100 dark:border-slate-800 text-center"
             >
               <div className="w-24 h-24 bg-rose-50 dark:bg-rose-950/30 text-rose-500 rounded-[2rem] flex items-center justify-center mx-auto mb-8">
                 <AlertTriangle size={48} strokeWidth={2.5} />
               </div>
-              <h4 className="text-4xl font-black text-slate-900 dark:text-white mb-4 tracking-tighter leading-tight">Permanent Erase?</h4>
-              <p className="text-slate-500 dark:text-slate-400 text-lg mb-12 leading-relaxed">
-                This memory will be removed from your digital archive forever.
-              </p>
+              <h4 className="text-4xl font-black text-slate-900 dark:text-white mb-4 tracking-tighter">Permanent Erase?</h4>
+              <p className="text-slate-500 dark:text-slate-400 mb-12">This memory will be removed forever.</p>
               <div className="grid grid-cols-1 gap-4">
                 <button 
                   disabled={isDeleting}
-                  onClick={confirmDelete}
-                  className="w-full py-5 rounded-[1.5rem] bg-rose-600 text-white font-black uppercase tracking-[0.2em] text-xs hover:bg-rose-700 transition-all shadow-xl shadow-rose-200 dark:shadow-none"
+                  onClick={(e) => { e.stopPropagation(); confirmDelete(); }}
+                  className="w-full py-5 rounded-[1.5rem] bg-rose-600 text-white font-black uppercase tracking-[0.2em] text-xs hover:bg-rose-700 disabled:opacity-50"
                 >
                   {isDeleting ? "Erasing..." : "Confirm Erase"}
                 </button>
                 <button 
                   onClick={() => setShowDeleteModal(false)}
-                  className="w-full py-5 rounded-[1.5rem] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-black uppercase tracking-[0.2em] text-xs hover:bg-slate-200 transition-all"
+                  className="w-full py-5 rounded-[1.5rem] bg-slate-100 dark:bg-slate-800 text-slate-600 font-black uppercase tracking-[0.2em] text-xs"
                 >
                   Keep Memory
                 </button>
