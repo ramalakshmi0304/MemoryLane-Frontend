@@ -3,7 +3,7 @@ import axios from "axios";
 const API = axios.create({
   // 1. Changed to baseURL (Axios standard)
   // 2. Removed semicolon after the variable
-  baseURL: process.env.REACT_APP_API_URL || "http://localhost:5000"
+  baseURL: process.env.REACT_APP_API_URL || "http://localhost:4000"
 });
 
 // Request interceptor
