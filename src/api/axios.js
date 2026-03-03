@@ -1,7 +1,9 @@
 import axios from "axios";
 
 const API = axios.create({
-  baseURL: "http://localhost:4000/api",
+  // 1. Changed to baseURL (Axios standard)
+  // 2. Removed semicolon after the variable
+  baseURL: process.env.REACT_APP_API_URL || "http://localhost:5000"
 });
 
 // Request interceptor
@@ -19,12 +21,14 @@ API.interceptors.request.use((config) => {
 API.interceptors.response.use(
   (response) => response,
   (error) => {
+    // 3. Optional Chaining is good here to prevent crashes if response is undefined
+    const message = error.response?.data?.message || error.response?.data?.error || "";
 
     if (
-      error.response?.data?.message?.includes("expired") ||
-      error.response?.data?.error?.includes("expired")
+      error.response?.status === 401 || // 4. Best practice: check for 401 Unauthorized status
+      message.toLowerCase().includes("expired")
     ) {
-      // Clear token
+      // Clear storage
       localStorage.removeItem("token");
       localStorage.removeItem("user");
 
