@@ -2,12 +2,13 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ArrowLeft, Plus, Share2, FileText, Sparkles, Trash2, Info, X, Wand2, Loader2, Check, RotateCcw
+  ArrowLeft, Plus, FileText, Sparkles, Trash2, Info, X, Wand2, Loader2, Check, RotateCcw
 } from "lucide-react";
 import API from "../api/axios";
 import Layout from "../components/Layout";
 import MemoryCard from "../components/MemoryCard";
 import SearchBar from "../components/SearchBar";
+import ShareModal from "../components/ShareModal"; // IMPORTED: ShareModal component
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import domtoimage from 'dom-to-image-more';
@@ -29,7 +30,7 @@ export default function AlbumDetail() {
   const [loading, setLoading] = useState(true);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isAiApplying, setIsAiApplying] = useState(false);
-  const [aiSuggestions, setAiSuggestions] = useState(null); // NEW: Holds AI preview data
+  const [aiSuggestions, setAiSuggestions] = useState(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [availableMemories, setAvailableMemories] = useState([]);
@@ -64,10 +65,8 @@ export default function AlbumDetail() {
 
   const handleAiMagic = async () => {
     if (memories.length === 0) return toast.error("Add moments first!");
-
     setIsAiLoading(true);
     const toastId = toast.loading("Gemini is imagining cinematic titles...");
-
     try {
       const data = await triggerAlbumMagic(id, album?.user_id, album?.name);
       if (data.success && data.suggestions) {
@@ -82,63 +81,46 @@ export default function AlbumDetail() {
   };
 
   const handleApplyMagic = async () => {
-  if (!aiSuggestions) return;
-  setIsAiApplying(true);
-  const toastId = toast.loading("Saving enhancements...");
-
-  try {
-    const data = await confirmAlbumMagic(id, aiSuggestions);
-
-    if (data.success) {
-      // 1. Create the updated list correctly
-      const updated = memories.map((mem) => {
-        const s = aiSuggestions.find((suggestion) => 
-          String(suggestion.id) === String(mem.id)
-        );
-        
-        return s 
-          ? { ...mem, title: s.new_title, description: s.new_description } 
-          : mem;
-      });
-
-      // 2. Update state with the new array
-      setMemories([...updated]); 
-      
-      // 3. Clear suggestions to exit preview mode
-      setAiSuggestions(null);
-      
-      toast.success("Album enhanced!", { id: toastId });
+    if (!aiSuggestions) return;
+    setIsAiApplying(true);
+    const toastId = toast.loading("Saving enhancements...");
+    try {
+      const data = await confirmAlbumMagic(id, aiSuggestions);
+      if (data.success) {
+        const updated = memories.map((mem) => {
+          const s = aiSuggestions.find((suggestion) => 
+            String(suggestion.id) === String(mem.id)
+          );
+          return s ? { ...mem, title: s.new_title, description: s.new_description } : mem;
+        });
+        setMemories([...updated]); 
+        setAiSuggestions(null);
+        toast.success("Album enhanced!", { id: toastId });
+      }
+    } catch (err) {
+      console.error("Apply Magic Error:", err);
+      toast.error("Failed to save.", { id: toastId });
+    } finally {
+      setIsAiApplying(false);
     }
-  } catch (err) {
-    // THIS WAS MISSING: The catch block
-    console.error("Apply Magic Error:", err);
-    toast.error("Failed to save.", { id: toastId });
-  } finally {
-    // THIS WAS MISSING: The finally block
-    setIsAiApplying(false);
-  }
-};
+  };
+
   const handleExportPDF = async () => {
     if (memories.length === 0) return toast.error("No memories to export");
     const toastId = toast.loading("Rendering your Lookbook...");
-
     try {
       const element = pdfExportRef.current;
       element.style.display = "block";
-
       const dataUrl = await domtoimage.toPng(element, {
         bgcolor: '#ffffff',
         width: 800,
         cacheBust: true
       });
-
       const pdf = new jsPDF("p", "mm", "a4");
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (element.offsetHeight * pdfWidth) / 800;
-
       pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
       pdf.save(`${album?.name.replace(/\s+/g, '_')}_Lookbook.pdf`);
-
       element.style.display = "none";
       toast.success("Lookbook exported!", { id: toastId });
     } catch (err) {
@@ -153,7 +135,6 @@ export default function AlbumDetail() {
       const allLibraryMemories = res.data?.memories || res.data || [];
       const currentAlbumIds = memories.map(m => m.id);
       const available = allLibraryMemories.filter(m => !currentAlbumIds.includes(m.id));
-
       setAvailableMemories(available);
       setModalSelection([]);
       setIsModalOpen(true);
@@ -165,7 +146,6 @@ export default function AlbumDetail() {
   const handleAddSelected = async () => {
     if (modalSelection.length === 0) return;
     const toastId = toast.loading(`Adding ${modalSelection.length} moments...`);
-
     try {
       await API.post(`/albums/${id}/memories`, { memoryIds: modalSelection });
       toast.success("Album updated!", { id: toastId });
@@ -199,10 +179,8 @@ export default function AlbumDetail() {
     const matchesSearch = !search ||
       mem.title?.toLowerCase().includes(search.toLowerCase()) ||
       mem.description?.toLowerCase().includes(search.toLowerCase());
-
     const matchesTag = tagFilter === "all" || mem.tags?.includes(tagFilter);
     const matchesMilestone = !isMilestone || mem.is_milestone;
-
     return matchesSearch && matchesTag && matchesMilestone;
   });
 
@@ -224,6 +202,9 @@ export default function AlbumDetail() {
               </h1>
             </div>
             <div className="flex items-center gap-3">
+              {/* FEATURE ADDED: Share Album Modal */}
+              <ShareModal memoryId={id} isAlbum={true} />
+
               <Button
                 onClick={handleAiMagic}
                 disabled={isAiLoading || memories.length === 0 || aiSuggestions}
@@ -273,14 +254,9 @@ export default function AlbumDetail() {
           ) : (
             <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-8 space-y-8">
               {memories.map((memory, idx) => {
-                // Check if there is a preview suggestion for this memory
                 const suggestion = aiSuggestions?.find(s => s.id === memory.id);
-
                 return (
                   <motion.div
-                    // 2. DYNAMIC KEY: When 'aiSuggestions' becomes null (after clicking Apply), 
-                    // the key changes from "id-preview" to "id-stable". 
-                    // This FORCES React to destroy the old card and mount a brand new one.
                     key={`${memory.id}-${aiSuggestions ? 'preview' : 'stable'}`}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -298,7 +274,6 @@ export default function AlbumDetail() {
                     <MemoryCard
                       memory={{
                         ...memory,
-                        // 3. PRIORITY LOGIC: Use suggestion if it exists, otherwise use memory state
                         title: suggestion?.new_title || memory.title,
                         description: suggestion?.new_description || memory.description,
                         display_url: memory.display_url || memory.media?.[0]?.file_url
@@ -328,18 +303,10 @@ export default function AlbumDetail() {
                 <p className="text-slate-500 text-sm font-bold">Enhance {aiSuggestions.length} items?</p>
               </div>
               <div className="flex gap-2 ml-auto">
-                <Button
-                  variant="ghost"
-                  onClick={() => setAiSuggestions(null)}
-                  className="rounded-2xl gap-2 text-slate-500 font-bold"
-                >
+                <Button variant="ghost" onClick={() => setAiSuggestions(null)} className="rounded-2xl gap-2 text-slate-500 font-bold">
                   <RotateCcw size={16} /> Discard
                 </Button>
-                <Button
-                  onClick={handleApplyMagic}
-                  disabled={isAiApplying}
-                  className="rounded-2xl gap-2 bg-indigo-600 text-white font-bold px-6"
-                >
+                <Button onClick={handleApplyMagic} disabled={isAiApplying} className="rounded-2xl gap-2 bg-indigo-600 text-white font-bold px-6">
                   {isAiApplying ? <Loader2 className="animate-spin" size={16} /> : <Check size={16} />}
                   Apply Magic
                 </Button>
@@ -348,7 +315,7 @@ export default function AlbumDetail() {
           )}
         </AnimatePresence>
 
-        {/* --- MODAL SECTION --- */}
+        {/* --- ADD TO ALBUM MODAL --- */}
         <AnimatePresence>
           {isModalOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm">
@@ -365,10 +332,7 @@ export default function AlbumDetail() {
                   </div>
                   <div className="flex items-center gap-3">
                     {modalSelection.length > 0 && (
-                      <Button
-                        onClick={handleAddSelected}
-                        className="bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-100"
-                      >
+                      <Button onClick={handleAddSelected} className="bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-100">
                         Add {modalSelection.length} Selected
                       </Button>
                     )}
@@ -377,7 +341,6 @@ export default function AlbumDetail() {
                     </Button>
                   </div>
                 </div>
-
                 <div className="px-8 py-4 border-b">
                   <SearchBar
                     search={search}
@@ -389,7 +352,6 @@ export default function AlbumDetail() {
                     setIsMilestone={setIsMilestone}
                   />
                 </div>
-
                 <div className="flex-1 overflow-y-auto p-6 space-y-4">
                   {filteredAvailable.length === 0 ? (
                     <div className="text-center py-12">
@@ -409,17 +371,11 @@ export default function AlbumDetail() {
                             }}
                             className={cn(
                               "flex items-center gap-4 p-4 rounded-2xl cursor-pointer transition-all border-2",
-                              isSelected
-                                ? "bg-indigo-50 dark:bg-indigo-950/30 border-indigo-500 shadow-sm"
-                                : "bg-slate-50 dark:bg-slate-800/50 border-transparent hover:border-slate-200"
+                              isSelected ? "bg-indigo-50 dark:bg-indigo-950/30 border-indigo-500 shadow-sm" : "bg-slate-50 dark:bg-slate-800/50 border-transparent hover:border-slate-200"
                             )}
                           >
                             <div className="w-16 h-16 rounded-xl overflow-hidden relative flex-shrink-0 bg-slate-200">
-                              <img
-                                src={mem.display_url || mem.media?.[0]?.file_url}
-                                className="w-full h-full object-cover"
-                                alt=""
-                              />
+                              <img src={mem.display_url || mem.media?.[0]?.file_url} className="w-full h-full object-cover" alt="" />
                               {isSelected && (
                                 <div className="absolute inset-0 bg-indigo-600/20 flex items-center justify-center">
                                   <Sparkles size={20} className="text-white fill-current" />
@@ -428,10 +384,7 @@ export default function AlbumDetail() {
                             </div>
                             <div className="flex-1 min-w-0">
                               <h4 className="font-bold text-slate-900 dark:text-white truncate">{mem.title || "Untitled Moment"}</h4>
-                              <p className={cn(
-                                "text-[10px] font-black uppercase tracking-widest",
-                                isSelected ? "text-indigo-600" : "text-slate-400"
-                              )}>
+                              <p className={cn("text-[10px] font-black uppercase tracking-widest", isSelected ? "text-indigo-600" : "text-slate-400")}>
                                 {isSelected ? "Selected" : "Click to select"}
                               </p>
                             </div>
@@ -447,17 +400,7 @@ export default function AlbumDetail() {
         </AnimatePresence>
 
         {/* --- PDF TEMPLATE (Hidden) --- */}
-        <div
-          ref={pdfExportRef}
-          style={{
-            display: "none",
-            width: "800px",
-            padding: "60px",
-            backgroundColor: "#ffffff",
-            color: "#000000",
-            fontFamily: "Arial, sans-serif"
-          }}
-        >
+        <div ref={pdfExportRef} style={{ display: "none", width: "800px", padding: "60px", backgroundColor: "#ffffff", color: "#000000", fontFamily: "Arial, sans-serif" }}>
           <div style={{ textAlign: "center", marginBottom: "60px" }}>
             <h1 style={{ fontSize: "48px", fontWeight: "900", color: "#1e293b", margin: 0 }}>{album?.name}</h1>
             <p style={{ color: "#64748b", fontSize: "18px", marginTop: "10px" }}>{album?.description}</p>
@@ -466,16 +409,9 @@ export default function AlbumDetail() {
             {memories.map((mem, i) => (
               <div key={i} style={{ marginBottom: "20px" }}>
                 <div style={{ borderRadius: "15px", overflow: "hidden", height: "350px", backgroundColor: "#f8fafc" }}>
-                  <img
-                    crossOrigin="anonymous"
-                    src={mem.display_url || mem.media?.[0]?.file_url}
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                    alt=""
-                  />
+                  <img crossOrigin="anonymous" src={mem.display_url || mem.media?.[0]?.file_url} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" />
                 </div>
-                <h4 style={{ marginTop: "12px", fontSize: "16px", fontWeight: "bold", color: "#334155" }}>
-                  {mem.title || "Untitled Moment"}
-                </h4>
+                <h4 style={{ marginTop: "12px", fontSize: "16px", fontWeight: "bold", color: "#334155" }}>{mem.title || "Untitled Moment"}</h4>
               </div>
             ))}
           </div>

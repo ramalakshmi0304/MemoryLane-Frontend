@@ -87,8 +87,8 @@ export default function Layout({ children }) {
       </aside>
 
       {/* --- MAIN CONTENT AREA --- */}
-      <div className="flex flex-1 flex-col relative overflow-hidden">
-        <main className="flex-1 pb-32 md:pb-8 overflow-y-auto">
+      <div className="flex flex-1 flex-col relative">
+        <main className="flex-1 pb-32 md:pb-8 overflow-y-auto h-screen">
           {children}
         </main>
       </div>

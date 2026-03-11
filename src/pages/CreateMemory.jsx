@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from "react";
-import { ImagePlus, Sparkles, X, Mic, UploadCloud, Hash, Check, Loader2 } from "lucide-react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import { ImagePlus, Sparkles, X, Mic, UploadCloud, Hash, Check, Loader2, Play } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -18,21 +18,21 @@ import VoiceRecorder from "@/components/VoiceRecorder";
 export default function CreateMemory() {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
+  const videoRef = useRef(null);
 
-  const [title, setTitle] = useState(""); 
-  const [description, setDescription] = useState(""); 
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [isMilestone, setIsMilestone] = useState(false);
-  
+
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [voiceBlob, setVoiceBlob] = useState(null);
-  
-  const [albums, setAlbums] = useState([]); 
-  const [selectedAlbum, setSelectedAlbum] = useState(""); 
-  
-  // Tag States
+
+  const [albums, setAlbums] = useState([]);
+  const [selectedAlbum, setSelectedAlbum] = useState("");
+
   const [availableTags, setAvailableTags] = useState([]);
   const [selectedTags, setSelectedTags] = useState([]);
 
@@ -56,8 +56,49 @@ export default function CreateMemory() {
     fetchData();
   }, []);
 
+  // Auto-play video preview when new preview is set
+  useEffect(() => {
+    if (!preview || !videoRef.current || !file?.type.startsWith("video/")) return;
+
+    const video = videoRef.current;
+    video.currentTime = 0.1;
+
+    const playVideo = async () => {
+      try {
+        await video.play();
+      } catch (err) {
+        console.error("Initial video autoplay failed:", err);
+        // Fallback: video will play on hover
+      }
+    };
+
+    // Small delay to ensure video is ready
+    const timeoutId = setTimeout(playVideo, 100);
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (video) {
+        video.pause();
+        video.currentTime = 0.1;
+      }
+    };
+  }, [preview, file]);
+
   const handleFileChange = (e) => {
     const selectedFiles = Array.from(e.target.files);
+
+    if (preview) {
+      URL.revokeObjectURL(preview);
+    }
+    // 50MB limit check
+    const MAX_SIZE = 50 * 1024 * 1024;
+    const isTooLarge = selectedFiles.some(file => file.size > MAX_SIZE);
+
+    if (isTooLarge) {
+      toast.error("File is too large! Please choose a file under 50MB.");
+      return;
+    }
+
     if (isBulkMode) {
       setBulkFiles((prev) => [...prev, ...selectedFiles]);
     } else if (selectedFiles[0]) {
@@ -68,13 +109,14 @@ export default function CreateMemory() {
 
   const handleRemoveImage = (e) => {
     e.stopPropagation();
+    if (preview) URL.revokeObjectURL(preview);
     setFile(null);
     setPreview(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const toggleTag = (tagName) => {
-    setSelectedTags(prev => 
+    setSelectedTags(prev =>
       prev.includes(tagName) ? prev.filter(t => t !== tagName) : [...prev, tagName]
     );
   };
@@ -95,7 +137,6 @@ export default function CreateMemory() {
           formData.append("memory_date", date);
           formData.append("is_milestone", String(isMilestone));
           if (selectedAlbum) formData.append("album_id", selectedAlbum);
-          // Only send tags if they exist
           if (selectedTags.length) formData.append("tags", JSON.stringify(selectedTags));
           formData.append("file", f);
           return API.post("/memories", formData);
@@ -127,11 +168,24 @@ export default function CreateMemory() {
     }
   };
 
+  const handleVideoMouseEnter = useCallback((e) => {
+    const video = e.currentTarget;
+    video.play().catch((err) => {
+      console.error("Video play failed on hover:", err);
+    });
+  }, []);
+
+  const handleVideoMouseLeave = useCallback((e) => {
+    const video = e.currentTarget;
+    video.pause();
+    video.currentTime = 0.1;
+  }, []);
+
   return (
     <Layout>
       <div className="min-h-screen bg-[#FDFDFF] dark:bg-slate-950 pt-10 pb-20 px-4">
         <div className="container max-w-6xl mx-auto">
-          
+
           <div className="flex justify-between items-end mb-10">
             <div>
               <h1 className="text-5xl font-black tracking-tighter text-slate-900 dark:text-white">
@@ -139,43 +193,61 @@ export default function CreateMemory() {
               </h1>
             </div>
             <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-full border shadow-sm">
-               <span className="text-[10px] font-black px-2 uppercase text-slate-500">Bulk Mode</span>
-               <Switch checked={isBulkMode} onCheckedChange={(val) => {
-                 setIsBulkMode(val);
-                 setPreview(null);
-                 setFile(null);
-                 setBulkFiles([]);
-               }} />
+              <span className="text-[10px] font-black px-2 uppercase text-slate-500">Bulk Mode</span>
+              <Switch checked={isBulkMode} onCheckedChange={(val) => {
+                setIsBulkMode(val);
+                setPreview(null);
+                setFile(null);
+                setBulkFiles([]);
+              }} />
             </div>
           </div>
 
           <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            
+
             <div className="lg:col-span-5 space-y-6">
-              <div 
+              <div
                 onClick={() => fileInputRef.current.click()}
                 className="relative aspect-square rounded-[3rem] border-2 border-dashed border-slate-200 bg-white dark:bg-slate-900 flex flex-col items-center justify-center overflow-hidden transition-all shadow-xl cursor-pointer hover:border-indigo-500"
               >
                 {isBulkMode ? (
-                   <div className="text-center p-6">
-                      <UploadCloud className="text-indigo-600 mx-auto mb-4" size={48} />
-                      <p className="font-black text-lg">{bulkFiles.length} Files Selected</p>
-                      <p className="text-xs text-slate-400 font-bold uppercase mt-2">Click to add more</p>
-                   </div>
+                  <div className="text-center p-6">
+                    <UploadCloud className="text-indigo-600 mx-auto mb-4" size={48} />
+                    <p className="font-black text-lg">{bulkFiles.length} Files Selected</p>
+                    <p className="text-xs text-slate-400 font-bold uppercase mt-2">Click to add more</p>
+                  </div>
                 ) : preview ? (
                   <>
-                    <img src={preview} className="h-full w-full object-cover" alt="Preview" />
+                    {file && file.type.startsWith("video/") ? (
+                      <video
+                        ref={videoRef}
+                        key={preview}
+                        src={preview}
+                        className="h-full w-full object-cover"
+                        muted
+                        loop
+                        playsInline
+                        preload="metadata"
+                        onLoadedMetadata={(e) => {
+                          e.target.currentTime = 0.1;
+                        }}
+                        onMouseEnter={handleVideoMouseEnter}
+                        onMouseLeave={handleVideoMouseLeave}
+                      />
+                    ) : (
+                      <img src={preview} className="h-full w-full object-cover" alt="Preview" />
+                    )}
                     <button type="button" onClick={handleRemoveImage} className="absolute top-6 right-6 p-3 bg-red-500 text-white rounded-2xl z-10"><X size={20} /></button>
                   </>
                 ) : (
                   <div className="text-center">
                     <ImagePlus className="text-indigo-600 mx-auto mb-4" size={32} />
-                    <p className="font-black text-lg">Add Photo</p>
+                    <p className="font-black text-lg">Add Photo/Video</p>
                   </div>
                 )}
-                <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" multiple={isBulkMode} />
+                <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*,video/*" multiple={isBulkMode} />
               </div>
-              
+
               {!isBulkMode && (
                 <div className="bg-indigo-600 rounded-[2.5rem] p-6 text-white shadow-lg">
                   <div className="flex items-center gap-3 mb-4">
@@ -189,13 +261,12 @@ export default function CreateMemory() {
 
             <div className="lg:col-span-7 space-y-6">
               <div className="bg-white dark:bg-slate-900 rounded-[3rem] p-8 border border-slate-100 shadow-2xl space-y-6">
-                
+
                 <div className="space-y-2">
                   <Label className="text-[11px] font-black text-indigo-600 uppercase tracking-widest">Title {isBulkMode && '(Optional)'}</Label>
                   <Input value={title} onChange={(e) => setTitle(e.target.value)} className="h-16 text-2xl font-black bg-slate-50 border-none" placeholder="Moment title..." />
                 </div>
 
-                {/* --- TAGS DROPDOWN --- */}
                 <div className="space-y-2">
                   <Label className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Tags</Label>
                   <Select onValueChange={(val) => toggleTag(val)}>
@@ -217,7 +288,6 @@ export default function CreateMemory() {
                     </SelectContent>
                   </Select>
 
-                  {/* Selected Tags Display */}
                   <div className="flex flex-wrap gap-2 mt-2">
                     <AnimatePresence>
                       {selectedTags.map(tag => (
@@ -262,7 +332,7 @@ export default function CreateMemory() {
                     <Switch checked={isMilestone} onCheckedChange={setIsMilestone} />
                   </div>
 
-                  <Button 
+                  <Button
                     disabled={isUploading}
                     className="flex-[2] h-16 rounded-2xl bg-slate-900 dark:bg-indigo-600 text-white font-black uppercase tracking-widest"
                   >
