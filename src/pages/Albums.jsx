@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import API from "../api/axios";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ImageIcon, Loader2, Download, Trash2, FolderPlus, X, ChevronRight, Layers, Share2, Sparkles
+  ImageIcon, Loader2, Download, Trash2, FolderPlus, X, ChevronRight, Layers, Sparkles
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import Layout from "../components/Layout";
@@ -35,21 +35,7 @@ export default function Albums() {
     fetchAlbums();
   }, [fetchAlbums]);
 
-  const handleShareAlbum = async (e, album) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // Copy internal dashboard link for authenticated team members
-    const internalUrl = `${window.location.origin}/albums/${album.id}`;
-
-    try {
-      await navigator.clipboard.writeText(internalUrl);
-      toast.success("Internal link copied to clipboard!");
-    } catch (err) { 
-      toast.error("Could not copy link."); 
-    }
-  };
-
+  
   const handleDeleteAlbum = async (e, albumId) => {
     e.preventDefault(); e.stopPropagation();
     if (!window.confirm("Delete this collection? This cannot be undone.")) return;
@@ -222,7 +208,6 @@ export default function Albums() {
                     
                     {/* OVERLAY ACTIONS */}
                     <div className="absolute top-4 right-4 z-40 flex gap-2 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
-                      <button onClick={(e) => handleShareAlbum(e, album)} title="Copy Internal Link" className="h-10 w-10 bg-white/90 backdrop-blur-md text-indigo-600 rounded-xl flex items-center justify-center hover:bg-indigo-600 hover:text-white transition-all shadow-lg"><Share2 size={18} /></button>
                       <button onClick={(e) => handleDownloadAlbum(e, album)} title="Download ZIP" className="h-10 w-10 bg-white/90 backdrop-blur-md text-slate-900 rounded-xl flex items-center justify-center hover:bg-slate-900 hover:text-white transition-all shadow-lg"><Download size={18} /></button>
                       <button onClick={(e) => handleDeleteAlbum(e, album.id)} title="Delete Album" className="h-10 w-10 bg-white/90 backdrop-blur-md text-rose-600 rounded-xl flex items-center justify-center hover:bg-rose-600 hover:text-white transition-all shadow-lg"><Trash2 size={18} /></button>
                     </div>
