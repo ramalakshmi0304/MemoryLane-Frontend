@@ -41,41 +41,41 @@ const Dashboard = () => {
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
   // 2. Fetch Memories
- const fetchData = useCallback(async (signal) => {
-  setIsLoading(true);
-  try {
-    const isAdmin = user?.role === "admin";
-    const isEveryone = isAdmin && userScope === "all";
-    const memoryEndpoint = isEveryone ? "/memories/all" : "/memories";
-    
-    // Use an object to initialize params
-    const params = new URLSearchParams({
-      page: page.toString(),
-      search: search.trim(),
-      is_milestone: isMilestone ? "true" : "false",
-    });
+  const fetchData = useCallback(async (signal) => {
+    setIsLoading(true);
+    try {
+      const isAdmin = user?.role === "admin";
+      const isEveryone = isAdmin && userScope === "all";
+      const memoryEndpoint = isEveryone ? "/memories/all" : "/memories";
 
-    if (tagFilter !== "all") params.append("tag", tagFilter);
+      // Use an object to initialize params
+      const params = new URLSearchParams({
+        page: page.toString(),
+        search: search.trim(),
+        is_milestone: isMilestone ? "true" : "false",
+      });
 
-    // CRITICAL: Ensure this block is exactly like this
-    if (isEveryone && selectedUserId !== "all") {
-      params.append("userId", selectedUserId); // Matches your frontend state
-    }
+      if (tagFilter !== "all") params.append("tag", tagFilter);
 
-    console.log(`🛰️ Fetching: ${memoryEndpoint}?${params.toString()}`);
+      // CRITICAL: Ensure this block is exactly like this
+      if (isEveryone && selectedUserId !== "all") {
+        params.append("userId", selectedUserId); // Matches your frontend state
+      }
 
-    const [memRes, tagRes, statsRes] = await Promise.all([
-      API.get(`${memoryEndpoint}?${params.toString()}`, { signal }),
-      API.get("/memories/tags", { signal }),
-      API.get("/memories/stats", { signal }),
-    ]);
+      console.log(`🛰️ Fetching: ${memoryEndpoint}?${params.toString()}`);
+
+      const [memRes, tagRes, statsRes] = await Promise.all([
+        API.get(`${memoryEndpoint}?${params.toString()}`, { signal }),
+        API.get("/memories/tags", { signal }),
+        API.get("/memories/stats", { signal }),
+      ]);
 
       setMemories(memRes.data?.memories || memRes.data?.data || []);
       setTotalPages(memRes.data?.pagination?.totalPages || 1);
-      
+
       const rawTags = tagRes.data?.data || tagRes.data || [];
       setTags(rawTags.map(t => typeof t === 'object' ? t.name : t));
-      
+
       const serverStats = statsRes.data?.data || statsRes.data || {};
       setStats({
         total: serverStats.total || 0,
@@ -83,11 +83,19 @@ const Dashboard = () => {
         albums: serverStats.albums || 0
       });
     } catch (err) {
-      if (err.name !== 'CanceledError') console.error(err);
+      if (err.name !== "CanceledError" && err.name !== "AbortError") {
+        console.error(err);
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [page, search, tagFilter, user, isMilestone, userScope, selectedUserId]);
+  }, [page, search, tagFilter, user?.role, isMilestone, userScope, selectedUserId]);
+
+  // 2. Refresh Handler (Now outside fetchData)
+  const handleRefresh = useCallback(() => {
+    const controller = new AbortController();
+    fetchData(controller.signal);
+  }, [fetchData]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -101,7 +109,7 @@ const Dashboard = () => {
   return (
     <Layout>
       <div className="min-h-full pb-20 bg-[#FDFDFF] dark:bg-slate-950 transition-colors duration-300">
-        
+
         {/* --- HEADER --- */}
         <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border-b border-slate-200/60 dark:border-slate-800/60">
           <div className="max-w-7xl mx-auto px-6 py-10 flex flex-col md:flex-row justify-between items-end gap-6">
@@ -115,14 +123,14 @@ const Dashboard = () => {
                 <div className="flex items-center gap-3">
                   {/* Scope Switcher */}
                   <div className="flex bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
-                    <button 
-                      onClick={() => { setUserScope("all"); setSelectedUserId("all"); }} 
+                    <button
+                      onClick={() => { setUserScope("all"); setSelectedUserId("all"); }}
                       className={`px-5 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${userScope === 'all' ? 'bg-white dark:bg-slate-700 shadow-md text-indigo-600 dark:text-white' : 'text-slate-500'}`}
                     >
                       Network
                     </button>
-                    <button 
-                      onClick={() => setUserScope("mine")} 
+                    <button
+                      onClick={() => setUserScope("mine")}
                       className={`px-5 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${userScope === 'mine' ? 'bg-white dark:bg-slate-700 shadow-md text-indigo-600 dark:text-white' : 'text-slate-500'}`}
                     >
                       Private
@@ -136,11 +144,11 @@ const Dashboard = () => {
                         value={selectedUserId}
                         onChange={(e) => setSelectedUserId(e.target.value)}
                         className="h-12 pl-10 pr-10 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase tracking-widest text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer shadow-sm"
-                        style={{ 
-                          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, 
-                          backgroundRepeat: 'no-repeat', 
-                          backgroundPosition: 'right 0.75rem center', 
-                          backgroundSize: '1em' 
+                        style={{
+                          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                          backgroundRepeat: 'no-repeat',
+                          backgroundPosition: 'right 0.75rem center',
+                          backgroundSize: '1em'
                         }}
                       >
                         <option value="all">Every User</option>
@@ -155,7 +163,7 @@ const Dashboard = () => {
                   )}
                 </div>
               )}
-              
+
               <Link to="/create" className="group bg-slate-900 dark:bg-indigo-600 text-white px-8 py-3.5 rounded-xl shadow-xl hover:-translate-y-0.5 transition-all flex items-center gap-3 text-xs font-black uppercase tracking-widest">
                 New Memory <Plus size={18} strokeWidth={3} className="group-hover:rotate-90 transition-transform duration-300" />
               </Link>
@@ -207,7 +215,7 @@ const Dashboard = () => {
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
                   {memories.length > 0 ? (
                     memories.map((m) => (
-                      <MemoryCard key={m.id} memory={m} onRefresh={() => fetchData()} />
+                      <MemoryCard key={m.id} memory={m} onRefresh={() => handleRefresh()} />
                     ))
                   ) : (
                     <div className="col-span-full py-32 text-center bg-white dark:bg-slate-900 rounded-[2.5rem] border-2 border-dashed border-slate-100 dark:border-slate-800">

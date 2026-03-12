@@ -1,12 +1,11 @@
-import React, { useState } from "react";
-// ADDED: CheckCircle2 for the selection badge
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Trash2, Trophy, MapPin, PlayCircle, Sparkles, Mic, Share2, AlertTriangle, Edit3, Download, Calendar, CheckCircle2 } from "lucide-react";
 import { format, isValid } from "date-fns";
 import API from "../api/axios";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import EditMemoryModal from "./EditMemoryModal";
-import ShareModal from "./ShareModal"; // Import the new modal
+import ShareModal from "./ShareModal";
 
 const MemoryCard = ({ memory, onRefresh, isSelectionMode, isSelected, onSelect }) => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -14,6 +13,10 @@ const MemoryCard = ({ memory, onRefresh, isSelectionMode, isSelected, onSelect }
   const [isEnlarged, setIsEnlarged] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  // Video states - FIXED: All at component level
+  const [videoThumbnail, setVideoThumbnail] = useState(null);
+  const videoRef = useRef(null);
 
   // Logic
   const displayUrl = memory.display_url || memory.media_url || memory.image_path || (memory.media && memory.media[0]?.file_url);
@@ -25,16 +28,63 @@ const MemoryCard = ({ memory, onRefresh, isSelectionMode, isSelected, onSelect }
     return isValid(dateObj) ? format(dateObj, "PPP") : "Unknown Date";
   };
 
-  const handleShare = (e) => {
-    e.stopPropagation();
-    const shareUrl = `${window.location.origin}/dashboard?id=${memory.id}`;
-    if (navigator.share) {
-      navigator.share({ title: memory.title, url: shareUrl }).catch(() => { });
-    } else {
-      navigator.clipboard.writeText(shareUrl);
-      toast.success("Link copied!");
+  // FIXED: Thumbnail generation at component level, no stale closures
+  const generateVideoThumbnail = useCallback(async (url) => {
+    try {
+      return new Promise((resolve) => {
+        const video = document.createElement('video');
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const cleanup = () => {
+          video.removeEventListener('seeked', handleSeeked);
+          video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        };
+
+        const handleLoadedMetadata = () => {
+          video.currentTime = Math.min(1, video.duration * 0.1);
+        };
+
+        const handleSeeked = () => {
+          canvas.width = 400;
+          canvas.height = 225;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const thumbnail = canvas.toDataURL('image/jpeg', 0.9);
+          cleanup();
+          video.src = '';
+          resolve(thumbnail);
+        };
+
+        video.addEventListener('loadedmetadata', handleLoadedMetadata);
+        video.addEventListener('seeked', handleSeeked);
+        video.muted = true;
+        video.src = url;
+        video.load();
+      });
+    } catch (error) {
+      console.error('Thumbnail failed:', error);
+      return null;
     }
-  };
+  }, []);
+
+  // FIXED: Single useEffect for thumbnail, proper cleanup
+  useEffect(() => {
+    if (mediaType !== "video" || !displayUrl) {
+      setVideoThumbnail(null);
+      return;
+    }
+
+    let isCurrent = true;
+    generateVideoThumbnail(displayUrl).then((thumbnail) => {
+      if (isCurrent) {
+        setVideoThumbnail(thumbnail);
+      }
+    });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [displayUrl, mediaType, generateVideoThumbnail]);
 
   const handleDownload = async (e) => {
     e.stopPropagation();
@@ -56,6 +106,7 @@ const MemoryCard = ({ memory, onRefresh, isSelectionMode, isSelected, onSelect }
       toast.error("Could not download file");
     }
   };
+
   const confirmDelete = async () => {
     try {
       setIsDeleting(true);
@@ -69,6 +120,8 @@ const MemoryCard = ({ memory, onRefresh, isSelectionMode, isSelected, onSelect }
       setShowDeleteModal(false);
     }
   };
+
+  // FIXED: Clean render function - NO hooks inside
   const renderPrimaryMedia = () => {
     if (!displayUrl || imageError) {
       return (
@@ -80,20 +133,32 @@ const MemoryCard = ({ memory, onRefresh, isSelectionMode, isSelected, onSelect }
         </div>
       );
     }
+
     if (mediaType === "video") {
       return (
-        <div className="relative h-full w-full">
-          <video src={displayUrl} className="h-full w-full object-cover" muted loop playsInline preload="metadata" />
-          <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-            <PlayCircle className="text-white drop-shadow-2xl" size={64} />
+        <div className="relative h-full w-full group">
+          {/* Static thumbnail - NO video element here */}
+          <img 
+            src={videoThumbnail || displayUrl} 
+            className="h-full w-full object-cover rounded-[2rem]"
+            alt="Video preview"
+            onError={() => setImageError(true)}
+          />
+          
+          {/* Play overlay */}
+          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-t from-black/70 via-black/30 rounded-[2rem] opacity-0 group-hover:opacity-100 transition-all duration-500">
+            <div className="w-20 h-20 bg-white/20 backdrop-blur-xl rounded-3xl flex items-center justify-center shadow-2xl border-3 border-white/40">
+              <PlayCircle className="text-white w-10 h-10 ml-1 drop-shadow-2xl" />
+            </div>
           </div>
         </div>
       );
     }
+
     return (
       <img
         src={displayUrl}
-        className="h-full w-full object-cover transition-transform duration-1000 ease-out group-hover:scale-110"
+        className="h-full w-full object-cover rounded-[2rem] transition-transform duration-1000 ease-out group-hover:scale-110"
         alt={memory.title}
         onError={() => setImageError(true)}
       />
@@ -104,13 +169,18 @@ const MemoryCard = ({ memory, onRefresh, isSelectionMode, isSelected, onSelect }
     <>
       <motion.div
         layout
-        onClick={() => isSelectionMode ? onSelect() : null}
-        className={`group relative flex flex-col w-full bg-white dark:bg-slate-900 rounded-[2.5rem] p-4 shadow-xl transition-all duration-500 cursor-pointer ${isSelected
-          ? "ring-[4px] ring-indigo-600 shadow-indigo-200 dark:shadow-none translate-y-[-8px]"
-          : "hover:-translate-y-3 shadow-slate-200/50 dark:shadow-none"
-          } ${memory.is_milestone && !isSelected ? "border-amber-200 ring-[12px] ring-amber-50/50" : "border-slate-50 dark:border-slate-800"
-          }`}
-      >{/* UPDATED FULLSCREEN OVERLAY */}
+        onClick={() => isSelectionMode ? onSelect?.() : null}
+        className={`group relative flex flex-col w-full bg-white dark:bg-slate-900 rounded-[2.5rem] p-4 shadow-xl transition-all duration-500 cursor-pointer ${
+          isSelected
+            ? "ring-[4px] ring-indigo-600 shadow-indigo-200 dark:shadow-none translate-y-[-8px]"
+            : "hover:-translate-y-3 shadow-slate-200/50 dark:shadow-none"
+        } ${
+          memory.is_milestone && !isSelected 
+            ? "border-amber-200 ring-[12px] ring-amber-50/50" 
+            : "border-slate-50 dark:border-slate-800"
+        }`}
+      >
+        {/* Fullscreen modal */}
         <AnimatePresence>
           {isEnlarged && (
             <motion.div
@@ -121,18 +191,17 @@ const MemoryCard = ({ memory, onRefresh, isSelectionMode, isSelected, onSelect }
               onClick={() => setIsEnlarged(false)}
             >
               {mediaType === "video" ? (
-                <motion.video
-                  initial={{ scale: 0.8, y: 20 }}
-                  animate={{ scale: 1, y: 0 }}
+                <video
                   src={displayUrl}
                   className="max-w-full max-h-[80vh] rounded-[2.5rem] shadow-2xl border border-white/10"
                   controls
-                  autoPlay
+                  preload="metadata"
+                  playsInline
                 />
               ) : (
                 <motion.img
-                  initial={{ scale: 0.8, y: 20 }}
-                  animate={{ scale: 1, y: 0 }}
+                  initial={{ scale: 0.9 }}
+                  animate={{ scale: 1 }}
                   src={displayUrl}
                   className="max-w-full max-h-[80vh] rounded-[2.5rem] shadow-2xl border border-white/10 object-contain"
                   alt={memory.title}
@@ -142,30 +211,26 @@ const MemoryCard = ({ memory, onRefresh, isSelectionMode, isSelected, onSelect }
           )}
         </AnimatePresence>
 
-        {/* MILESTONE BADGE */}
+        {/* Milestone badge */}
         {memory.is_milestone && (
-          <div className="absolute top-6 left-6 z-40 bg-amber-500 text-white px-5 py-2 rounded-2xl shadow-xl flex items-center gap-2 border-2 border-white dark:border-slate-900">
+          <div className="absolute top-6 left-6 z-40 bg-amber-500 text-white px-5 py-2 rounded-2xl shadow-xl flex items-center gap-2 border-2 border-white">
             <Trophy size={16} fill="currentColor" />
             <span className="text-[11px] font-black uppercase tracking-widest">Milestone</span>
           </div>
         )}
 
-        {/* FLOATING ACTIONS */}
+        {/* Floating actions */}
         {!isSelectionMode && (
           <div className="absolute top-6 right-6 z-40 flex flex-col gap-3 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-4 group-hover:translate-x-0">
-
-            {/* Use the ShareModal instead of a raw button */}
             <div onClick={(e) => e.stopPropagation()}>
               <ShareModal memoryId={memory.id} isAlbum={false} />
             </div>
-
             <button
               onClick={(e) => { e.stopPropagation(); setShowEditModal(true); }}
               className="h-12 w-12 flex items-center justify-center bg-white/95 dark:bg-slate-800/95 text-slate-600 hover:bg-black hover:text-white rounded-2xl shadow-2xl backdrop-blur-md transition-all active:scale-90 border border-slate-100"
             >
               <Edit3 size={20} strokeWidth={2.5} />
             </button>
-
             <button
               onClick={(e) => { e.stopPropagation(); setShowDeleteModal(true); }}
               className="h-12 w-12 flex items-center justify-center bg-white/95 dark:bg-slate-800/95 text-rose-600 hover:bg-black hover:text-white rounded-2xl shadow-2xl backdrop-blur-md transition-all active:scale-90 border border-slate-100"
@@ -175,21 +240,23 @@ const MemoryCard = ({ memory, onRefresh, isSelectionMode, isSelected, onSelect }
           </div>
         )}
 
-        {/* MEDIA BOX */}
+        {/* Media box - click to fullscreen */}
         <div
           onClick={(e) => {
             if (isSelectionMode) return;
             e.stopPropagation();
-            displayUrl && !imageError && setIsEnlarged(true);
+            if (displayUrl && !imageError) setIsEnlarged(true);
           }}
-          className={`relative aspect-[4/5] overflow-hidden rounded-[2rem] bg-slate-100 dark:bg-slate-800 ${displayUrl ? 'cursor-zoom-in' : 'cursor-default'}`}
+          className={`relative aspect-[4/5] overflow-hidden rounded-[2rem] bg-slate-100 dark:bg-slate-800 ${
+            displayUrl && !imageError ? 'cursor-zoom-in' : 'cursor-default'
+          }`}
         >
           {renderPrimaryMedia()}
           {isSelected && <div className="absolute inset-0 bg-indigo-600/20 backdrop-blur-[2px]" />}
           <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
         </div>
 
-        {/* CONTENT SECTION (Only One Copy Now!) */}
+        {/* Content */}
         <div className="mt-8 px-4 pb-4 space-y-6">
           <div className="flex flex-wrap gap-2">
             {memory.tags?.map((tag, i) => {
@@ -239,36 +306,27 @@ const MemoryCard = ({ memory, onRefresh, isSelectionMode, isSelected, onSelect }
         </div>
       </motion.div>
 
-      {/* FULLSCREEN OVERLAY */}
-      <AnimatePresence>
-        {isEnlarged && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-slate-950/98 backdrop-blur-3xl flex flex-col items-center justify-center p-8 cursor-zoom-out"
-            onClick={() => setIsEnlarged(false)}
-          >
-            <motion.img
-              initial={{ scale: 0.8, y: 20 }} animate={{ scale: 1, y: 0 }}
-              src={displayUrl} className="max-w-full max-h-[80vh] rounded-[2.5rem] shadow-2xl border border-white/10 object-contain"
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
+      {/* Edit Modal */}
       <EditMemoryModal
-        memory={memory} isOpen={showEditModal}
-        onClose={() => setShowEditModal(false)} onRefresh={onRefresh}
+        memory={memory}
+        isOpen={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        onRefresh={onRefresh}
       />
 
-      {/* DELETE MODAL (Ensured Buttons are Active) */}
+      {/* Delete Modal */}
       <AnimatePresence>
         {showDeleteModal && (
           <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-slate-900/95 backdrop-blur-md"
           >
             <motion.div
-              initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
               className="bg-white dark:bg-slate-900 rounded-[3rem] p-12 max-w-md w-full border border-slate-100 dark:border-slate-800 text-center"
             >
               <div className="w-24 h-24 bg-rose-50 dark:bg-rose-950/30 text-rose-500 rounded-[2rem] flex items-center justify-center mx-auto mb-8">
