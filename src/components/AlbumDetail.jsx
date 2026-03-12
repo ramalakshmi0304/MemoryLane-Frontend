@@ -81,54 +81,81 @@ export default function AlbumDetail() {
   };
 
   const handleApplyMagic = async () => {
-    if (!aiSuggestions) return;
-    setIsAiApplying(true);
-    const toastId = toast.loading("Saving enhancements...");
-    try {
-      const data = await confirmAlbumMagic(id, aiSuggestions);
-      if (data.success) {
-        const updated = memories.map((mem) => {
-          const s = aiSuggestions.find((suggestion) => 
-            String(suggestion.id) === String(mem.id)
-          );
-          return s ? { ...mem, title: s.new_title, description: s.new_description } : mem;
-        });
-        setMemories([...updated]); 
-        setAiSuggestions(null);
-        toast.success("Album enhanced!", { id: toastId });
-      }
-    } catch (err) {
-      console.error("Apply Magic Error:", err);
-      toast.error("Failed to save.", { id: toastId });
-    } finally {
-      setIsAiApplying(false);
+  if (!aiSuggestions || aiSuggestions.length === 0) return;
+  
+  setIsAiApplying(true);
+  const toastId = toast.loading("Saving enhancements...");
+  
+  try {
+    const data = await confirmAlbumMagic(id, aiSuggestions);
+    
+    if (data.success) {
+      // Use functional update to ensure state consistency
+      setMemories(prevMemories => 
+        prevMemories.map(mem => {
+          const suggestion = aiSuggestions.find(s => String(s.id) === String(mem.id));
+          return suggestion 
+            ? { ...mem, title: suggestion.new_title, description: suggestion.new_description } 
+            : mem;
+        })
+      );
+      
+      setAiSuggestions(null);
+      toast.success("Album enhanced!", { id: toastId });
+    } else {
+      throw new Error("API reported failure");
     }
-  };
-
+  } catch (err) {
+    console.error("Apply Magic Error:", err);
+    toast.error("Failed to save. Please try again.", { id: toastId });
+  } finally {
+    setIsAiApplying(false);
+  }
+};
   const handleExportPDF = async () => {
-    if (memories.length === 0) return toast.error("No memories to export");
+    // 1. Filter out videos before even attempting the snapshot
+    const visualMemories = memories.filter(m => {
+      const type = m.media_type || (m.media?.[0]?.file_type);
+      return type !== 'video';
+    });
+
+    if (visualMemories.length === 0) {
+      return toast.error("No compatible images found to export (videos are excluded).");
+    }
+
     const toastId = toast.loading("Rendering your Lookbook...");
+
     try {
       const element = pdfExportRef.current;
-      element.style.display = "block";
+      element.style.display = "block"; // Ensure hidden ref is visible for capture
+
+      // Use scale to improve resolution of the generated image
       const dataUrl = await domtoimage.toPng(element, {
         bgcolor: '#ffffff',
         width: 800,
-        cacheBust: true
+        cacheBust: true,
+        filter: (node) => {
+          // Explicitly hide any video elements during capture
+          return node.tagName !== 'VIDEO';
+        }
       });
+
       const pdf = new jsPDF("p", "mm", "a4");
       const pdfWidth = pdf.internal.pageSize.getWidth();
+      // Maintain aspect ratio for the height
       const pdfHeight = (element.offsetHeight * pdfWidth) / 800;
+
       pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
       pdf.save(`${album?.name.replace(/\s+/g, '_')}_Lookbook.pdf`);
+
       element.style.display = "none";
       toast.success("Lookbook exported!", { id: toastId });
     } catch (err) {
+      console.error("Export Error:", err);
       toast.error("Export failed.", { id: toastId });
       if (pdfExportRef.current) pdfExportRef.current.style.display = "none";
     }
   };
-
   const openAddModal = async () => {
     try {
       const res = await API.get("/memories");

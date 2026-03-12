@@ -96,23 +96,23 @@ export default function Albums() {
   };
 
   
-  const handleCreateAlbum = async (e) => {
-    e.preventDefault();
-    if (!newAlbum.name.trim()) return toast.error("Please enter an album name");
-    
-    try {
-      const res = await API.post("/albums", newAlbum);
-      const createdAlbum = res.data?.album || res.data;
-      
-      // Update local state with the new album
-      setAlbums((prev) => [{ ...createdAlbum, total_memories: 0 }, ...prev]);
-      setNewAlbum({ name: "", description: "" });
-      setIsCreating(false);
-      toast.success("Collection initialized!");
-    } catch (err) { 
-      toast.error("Error creating collection"); 
-    }
-  };
+const handleCreateAlbum = async (e) => {
+  e.preventDefault();
+  if (!newAlbum.name.trim()) return toast.error("Please enter an album name");
+  
+  setIsCreating(false); // Close modal first
+  const toastId = toast.loading("Initializing...");
+  
+  try {
+    await API.post("/albums", newAlbum);
+    await fetchAlbums(); // Refresh from server
+    toast.success("Collection initialized!", { id: toastId });
+    setNewAlbum({ name: "", description: "" });
+  } catch (err) { 
+    toast.error("Error creating collection", { id: toastId }); 
+    setIsCreating(true); // Re-open if it failed
+  }
+};
 
   return (
     <Layout>
