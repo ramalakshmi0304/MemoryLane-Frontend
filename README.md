@@ -17,9 +17,11 @@ Built using a modern **Backend-as-a-Service (BaaS)** architecture powered by Sup
 
 ## 🚀 Live Demo
 
-> **Status:** [View Live Site](https://your-deployment-link.com) *(Add link when deployed)*
-
+> **Status:** [View Live Site](https://memory-lane-frontend-three.vercel.app/) *
 ---
+admin credentials:
+email: admin@gmail.com
+password:admin@123
 
 ## ✨ Key Features
 
@@ -142,16 +144,16 @@ Memory Lane is designed to be:
 - Minimal – Focus on memories, not distractions  
 - Immersive – Smooth, cinematic experience  
 - Secure – Built with modern authentication and data protection  
+- Memory search and filtering  
+- Tags and categorization  
+- AI-Integration
 
 ---
 
 ## 📈 Future Enhancements
-
-- Memory search and filtering  
-- Tags and categorization  
 - Memory sharing with permissions  
 - Progressive Web App (PWA) support  
-- AI-based memory organization  
+
 
 ---
 
