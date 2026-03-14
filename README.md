@@ -146,13 +146,25 @@ Memory Lane is designed to be:
 - Secure – Built with modern authentication and data protection  
 - Memory search and filtering  
 - Tags and categorization  
-- AI-Integration
+- Smart Title Refinement: Uses AI to transform basic descriptions into polished, high-fidelity titles, ensuring the digital vault remains professional and organized.
 
 ---
 
 ## 📈 Future Enhancements
-- Memory sharing with permissions  
-- Progressive Web App (PWA) support  
+🧠 Phase 1: AI & Discovery
+Semantic Memory Search: Implementing pgvector in Supabase to allow users to search by "feeling" or "vibe" (e.g., "Find memories where I felt happy") rather than just keywords.
+
+AI Narrative Generation: Integration with Gemini API to automatically generate poetic or nostalgic captions based on uploaded image content.
+
+📱 Phase 2: Platform Growth
+Progressive Web App (PWA): Adding service workers and a web manifest to allow users to "install" Memory Lane on their phones with offline viewing capabilities.
+
+Collaborative Vaults: Secure, permission-based sharing for family albums using Supabase Invitations.
+
+⚙️ Phase 3: Performance & Ops
+Edge Function Optimizations: Moving heavy image processing and metadata extraction to Supabase Edge Functions for faster client-side performance.
+
+Automated Backups: Scripted exports of user data to ensure 100% "digital vault" reliability.
 
 
 ---
@@ -161,9 +173,8 @@ Memory Lane is designed to be:
 
 **B. Rama Lakshmi**
 
-- GitHub: https://github.com/yourusername  
-- LinkedIn: https://linkedin.com/in/yourprofile  
-
+- GitHub: https://github.com/ramalakshmi0304
+- LinkedIn: www.linkedin.com/in/rama-lakshmi-31ab19a8
 ---
 
 ## ⭐ Why This Project Stands Out
@@ -173,3 +184,43 @@ Memory Lane is designed to be:
 - Professional UI using shadcn/ui  
 - Scalable and production-ready design  
 - Portfolio-level frontend engineering  
+
+
+-- 1. Create the Memories Table
+CREATE TABLE public.memories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 2. Create the Media Table (for Images/Audio)
+CREATE TABLE public.media (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    memory_id UUID NOT NULL REFERENCES public.memories(id) ON DELETE CASCADE,
+    file_url TEXT NOT NULL,
+    file_type TEXT NOT NULL, -- e.g., 'image', 'audio'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 3. Enable Row-Level Security (RLS)
+ALTER TABLE public.memories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.media ENABLE ROW LEVEL SECURITY;
+
+-- 4. Create Security Policies
+-- Memories: Users can only see/edit their own records
+CREATE POLICY "Users can manage their own memories" 
+ON public.memories FOR ALL 
+USING (auth.uid() = user_id);
+
+-- Media: Users can only see/edit media linked to their memories
+CREATE POLICY "Users can manage media for their own memories" 
+ON public.media FOR ALL 
+USING (
+    EXISTS (
+        SELECT 1 FROM public.memories 
+        WHERE public.memories.id = public.media.memory_id 
+        AND public.memories.user_id = auth.uid()
+    )
+);
